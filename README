@@ -1,0 +1,3 @@
+sudo mvn package
+spark-submit --jars lib/args4j-2.0.5.jar --class main.java.edu.mit.compbio.qrf.QRF_spark --master local[2] /Users/yaping/Documents/workspace/code/QRF_spark/target/QRF_spark-0.1.jar
+
