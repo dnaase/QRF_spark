@@ -1,3 +1,15 @@
 sudo mvn package
 spark-submit --jars lib/args4j-2.0.5.jar --class main.java.edu.mit.compbio.qrf.QRF_spark --master local[2] /Users/yaping/Documents/workspace/code/QRF_spark/target/QRF_spark-0.1.jar
 
+
+cd /Users/yaping/Documents/workspace/project/meQTL/method_dev/multisource/testQRF_spark
+spark-submit --jars /Users/yaping/Documents/workspace/code/QRF_spark/lib/args4j-2.0.5.jar --class main.java.edu.mit.compbio.qrf.QRF_spark --master local[2] /Users/yaping/Documents/workspace/code/QRF_spark/target/QRF_spark-0.1.jar -train testQRF_spark.qrf /Users/yaping/Documents/workspace/project/meQTL/method_dev/multisource/split2_unequal/cis-qtl.matrixEQtlAll.SampleSize-575.matt_meqtl_random_1.chr1.tstat_hic_KRnorm_raw_1kGv3_recomb_OE.labeled.sampling20k.txt
+
+spark-submit --jars /Users/yaping/Documents/workspace/code/QRF_spark/lib/args4j-2.0.5.jar --class main.java.edu.mit.compbio.qrf.QRF_classifier_spark --master local[2] /Users/yaping/Documents/workspace/code/QRF_spark/target/QRF_spark-0.1.jar -train testQRF_spark.qrf /Users/yaping/Documents/workspace/project/meQTL/method_dev/multisource/split2_unequal/cis-qtl.matrixEQtlAll.SampleSize-575.matt_meqtl_random_1.chr1.tstat_hic_KRnorm_raw_1kGv3_recomb_OE.labeled.sampling20k.txt
+
+
+QRF_classifier_spark
+
+/Users/yaping/Documents/workspace/project/meQTL/method_dev/multisource/split2_unequal/cis-qtl.matrixEQtlAll.SampleSize-575.matt_meqtl_random_1.chr1.tstat_hic_KRnorm_raw_1kGv3_recomb_OE.labeled.sampling20k.txt
+
+

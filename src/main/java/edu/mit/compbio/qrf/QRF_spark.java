@@ -31,6 +31,8 @@ package main.java.edu.mit.compbio.qrf;
 
 
 
+import java.io.BufferedInputStream;
+import java.io.BufferedOutputStream;
 import java.io.BufferedReader;
 import java.io.File;
 import java.io.FileInputStream;
@@ -38,8 +40,10 @@ import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
 import java.io.FileReader;
 import java.io.IOException;
+import java.io.InputStream;
 import java.io.ObjectInputStream;
 import java.io.ObjectOutputStream;
+import java.io.OutputStream;
 import java.io.PrintWriter;
 import java.io.Serializable;
 import java.nio.file.Files;
@@ -52,6 +56,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.Random;
 
+import org.apache.commons.io.FileUtils;
+import org.apache.commons.io.IOUtils;
 import org.apache.log4j.BasicConfigurator;
 import org.apache.log4j.Level;
 import org.apache.log4j.Logger;
@@ -68,6 +74,7 @@ import org.apache.spark.ml.regression.RandomForestRegressor;
 import org.apache.spark.ml.tuning.CrossValidator;
 import org.apache.spark.ml.tuning.CrossValidatorModel;
 import org.apache.spark.ml.tuning.ParamGridBuilder;
+import org.apache.spark.mllib.linalg.DenseVector;
 import org.apache.spark.mllib.linalg.Vectors;
 import org.apache.spark.mllib.regression.LabeledPoint;
 import org.apache.spark.sql.DataFrame;
@@ -115,10 +122,13 @@ public class QRF_spark implements Serializable{
 	public Integer numTrees = 1000;
 	
 	@Option(name="-maxDepth",usage="maximum number of tree depth for random forest model, default: 4")
-	public Integer maxDepth = 4;
+	public Integer maxDepth = 5;
 	
 	@Option(name="-maxBins",usage="maximum number of bins used for splitting features at random forest model, default: 100")
 	public Integer maxBins = 100;
+
+	@Option(name="-maxMemoryInMB",usage="maximum memory (Mb) to be used for collecting sufficient statistics at random forest model training. larger usually quicker training, default: 10000")
+	public Integer maxMemoryInMB = 10000;
 
 	@Option(name="-featureCols",usage="which column is the class to be identified, allow multiple columns, default: null")
 	public ArrayList<Integer> featureCols = null;
@@ -160,7 +170,8 @@ public class QRF_spark implements Serializable{
 	public static void main(String[] args) throws Exception {
 		QRF_spark qrf = new QRF_spark();
 		BasicConfigurator.configure();
-
+		Logger.getLogger("org").setLevel(Level.ERROR);
+	    Logger.getLogger("akka").setLevel(Level.ERROR);
 		qrf.doMain(args);
 	}
 
@@ -184,14 +195,13 @@ public class QRF_spark implements Serializable{
 						System.err.println();
 						return;
 					}
-					String trainFile = args[0];
+
 					//read input bed file, for each row,
 					String modelFile = arguments.get(0);
 					String inputFile = arguments.get(1);
 					initiate();
 					
-					Logger.getLogger("org").setLevel(Level.WARN);
-				    Logger.getLogger("akka").setLevel(Level.WARN);
+					
 					
 					SparkConf sparkConf = new SparkConf().setAppName("QRF_spark");
 					JavaSparkContext sc = new JavaSparkContext(sparkConf);
@@ -224,6 +234,7 @@ public class QRF_spark implements Serializable{
 								.setNumTrees(numTrees)
 								.setMaxBins(maxBins)
 								.setMaxDepth(maxDepth)
+								.setMaxMemoryInMB(maxMemoryInMB)
 								.setSeed(seed);
 						
 						ParamMap[] paramGrid = new ParamGridBuilder()
@@ -256,8 +267,38 @@ public class QRF_spark implements Serializable{
 						
 						//
 						log.info("Read model, predicting ...");
-						readModel.transform(inputDataFrame).select("features", "label", "prediction").save(outputFile);
+						readModel.transform(inputDataFrame).select("features", "label", "prediction").javaRDD().map(new Function<Row, String>(){
+
+							@Override
+							public String call(Row row) throws Exception {
+								String tmp = null;
+								for(double s : ((DenseVector)row.get(0)).toArray()){
+									if(tmp == null){
+										tmp = String.valueOf(s);
+									}else{
+										tmp = tmp + "\t" + String.valueOf(s);
+									}
+									
+								}
+								return tmp + "\t" + row.get(1) + "\t" + row.get(2);
+							}
+							
+						}).saveAsTextFile(outputFile + ".tmp");
+						log.info("Merging files ...");
+						File[] listOfFiles = new File(outputFile + ".tmp").listFiles();
 						
+						OutputStream output = new BufferedOutputStream(new FileOutputStream(outputFile, true));
+			            for (File f : listOfFiles) {
+			            	if(f.isFile() && f.getName().startsWith("part-")){
+			            		InputStream input = new BufferedInputStream(new FileInputStream(f));
+				            	IOUtils.copy(input, output);
+				            	IOUtils.closeQuietly(input);
+			            	}
+			            	
+			            }
+			            IOUtils.closeQuietly(output);
+			            FileUtils.deleteDirectory(new File(outputFile + ".tmp"));
+			            
 						double rmse = calculateRMSE(readModel, inputDataFrame);
 						log.info("For the test dataset,  RMSE is: " + rmse);
 					}
