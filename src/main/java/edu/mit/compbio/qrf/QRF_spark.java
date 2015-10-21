@@ -62,10 +62,12 @@ import org.apache.log4j.BasicConfigurator;
 import org.apache.log4j.Level;
 import org.apache.log4j.Logger;
 import org.apache.spark.SparkConf;
+import org.apache.spark.api.java.JavaPairRDD;
 import org.apache.spark.api.java.JavaRDD;
 import org.apache.spark.api.java.JavaSparkContext;
 import org.apache.spark.api.java.function.Function;
 import org.apache.spark.api.java.function.Function2;
+import org.apache.spark.api.java.function.PairFunction;
 import org.apache.spark.ml.Model;
 import org.apache.spark.ml.evaluation.RegressionEvaluator;
 import org.apache.spark.ml.param.ParamMap;
@@ -74,9 +76,13 @@ import org.apache.spark.ml.regression.RandomForestRegressor;
 import org.apache.spark.ml.tuning.CrossValidator;
 import org.apache.spark.ml.tuning.CrossValidatorModel;
 import org.apache.spark.ml.tuning.ParamGridBuilder;
+import org.apache.spark.mllib.evaluation.RegressionMetrics;
 import org.apache.spark.mllib.linalg.DenseVector;
 import org.apache.spark.mllib.linalg.Vectors;
 import org.apache.spark.mllib.regression.LabeledPoint;
+import org.apache.spark.mllib.tree.RandomForest;
+import org.apache.spark.mllib.tree.model.RandomForestModel;
+import org.apache.spark.rdd.RDD;
 import org.apache.spark.sql.DataFrame;
 import org.apache.spark.sql.Row;
 import org.apache.spark.sql.SQLContext;
@@ -84,6 +90,8 @@ import org.kohsuke.args4j.Argument;
 import org.kohsuke.args4j.CmdLineException;
 import org.kohsuke.args4j.CmdLineParser;
 import org.kohsuke.args4j.Option;
+
+import scala.Tuple2;
 
 
 
@@ -101,12 +109,6 @@ public class QRF_spark implements Serializable{
 
 	@Option(name="-train",usage="only  in the train mode, it will use input file to generate model and saved in model.qrf, default: false")
 	public boolean train = false;
-
-//	@Option(name="-testOnly",usage="only  in the test mode when no empty model.qrf is provided, the output will be generated in -outputFile, default: false")
-//	public boolean testOnly = false;
-
-	@Option(name="-ignoreCV",usage="ignore the cross validation step, default: false")
-	public boolean ignoreCV = false;
 	
 
 	@Option(name="-outputFile",usage="the model predicted value on test dataset, default: null")
@@ -160,7 +162,7 @@ public class QRF_spark implements Serializable{
 
 	//private final String[] inputHeader = new String[]{"log10p", "dist", "hic", "recomb", "recomb_matched","chromStates","label"};
 	private final String[] inputHeader = new String[]{"log10p", "hic", "recomb","label"};
-
+	private double[] folds;
 	
 
 	/**
@@ -170,8 +172,9 @@ public class QRF_spark implements Serializable{
 	public static void main(String[] args) throws Exception {
 		QRF_spark qrf = new QRF_spark();
 		BasicConfigurator.configure();
-		Logger.getLogger("org").setLevel(Level.ERROR);
-	    Logger.getLogger("akka").setLevel(Level.ERROR);
+		Logger.getLogger("org").setLevel(Level.OFF);
+	    Logger.getLogger("akka").setLevel(Level.OFF);
+	    Logger.getLogger("io.netty").setLevel(Level.OFF);
 		qrf.doMain(args);
 	}
 
@@ -224,66 +227,82 @@ public class QRF_spark implements Serializable{
 					
 					
 					// Prepare training documents, which are labeled.
-					SQLContext sqlContext = new SQLContext(sc);
-
-					DataFrame inputDataFrame = sqlContext.createDataFrame(inputData, LabeledPoint.class);
+					
 					
 					if(train){
-						RandomForestRegressor rf = new RandomForestRegressor().setImpurity(impurity)
-								.setFeatureSubsetStrategy(featureSubsetStrategy)
-								.setNumTrees(numTrees)
-								.setMaxBins(maxBins)
-								.setMaxDepth(maxDepth)
-								.setMaxMemoryInMB(maxMemoryInMB)
-								.setSeed(seed);
+						JavaRDD<LabeledPoint>[] splits = inputData.randomSplit(folds, seed);
+						Map<Integer, Integer> categoricalFeaturesInfo = new HashMap<Integer, Integer>();
+						RandomForestModel bestModel = null;
+						double bestR2 = Double.NEGATIVE_INFINITY;
+						double bestMse = Double.MAX_VALUE;
+						double mseSum = 0.0;
+						RegressionMetrics rmBest = null;
+						for(int i = 0; i<kFold; i++){
+							JavaRDD<LabeledPoint> testData = splits[i];
+							JavaRDD<LabeledPoint> trainingData = null;
+							for(int j = 0; j<kFold; j++){
+								if(j == i)
+									continue;
+									if(trainingData != null){
+										trainingData.union(splits[j]);
+									}else{
+										trainingData = splits[j];
+									}
+									
+							}
+							final RandomForestModel model = RandomForest.trainRegressor(trainingData,
+									  categoricalFeaturesInfo, numTrees, featureSubsetStrategy, impurity, maxDepth, maxBins, seed);
+							
+							// Evaluate model on test instances and compute test error
+							RDD<Tuple2<Object, Object>> predictionAndLabel =
+							  testData.map(new Function<LabeledPoint, Tuple2<Object, Object>>() {
+							    @Override
+							    public Tuple2<Object, Object> call(LabeledPoint p) {
+							      return new Tuple2<Object, Object>(model.predict(p.features()), p.label());
+							    }
+							  }).rdd();
+							
+							RegressionMetrics rm = new RegressionMetrics(predictionAndLabel);
+							double r2 = rm.r2();
+							mseSum += rm.meanSquaredError();
+							if(r2 > bestR2){
+								bestModel = model;
+								rmBest = rm;
+								bestR2 = r2;
+								bestMse = rm.meanSquaredError();
+							}
+						}
+
+						log.info("After cross validation,  best model's MSE is: " + bestMse + "\tMean MSE is: " + mseSum/kFold + "\tVariance explained: " + rmBest.explainedVariance() + "\tR2: " + rmBest.r2());
+						bestModel.save(sc.sc(), modelFile);
 						
-						ParamMap[] paramGrid = new ParamGridBuilder()
-						  .build();
-						
-						//CV
-						CrossValidator cv = new CrossValidator()
-						  .setEstimator(rf)
-						  .setEvaluator(new RegressionEvaluator())
-						  .setEstimatorParamMaps(paramGrid)
-						  .setNumFolds(kFold); 
-						
-						// Run cross-validation, and choose the best set of parameters.
-						CrossValidatorModel cvModel = cv.fit(inputDataFrame);
-						
-						double rmse = calculateRMSE(cvModel.bestModel(), inputDataFrame);
-						log.info("After cross validation,  RMSE is: " + rmse);
-						ObjectOutputStream oos = new ObjectOutputStream(new FileOutputStream(modelFile));
-						oos.writeObject(cvModel.bestModel());
-						oos.close();
 						
 					}else{
 						if(outputFile == null)
 							throw new IllegalArgumentException("Need to provide output file name in -outputFile for Non training mode !!");
 						//load trained model
 						log.info("Loading model ...");
-						ObjectInputStream oosInput = new ObjectInputStream(new FileInputStream(modelFile));
-						RandomForestRegressionModel readModel = (RandomForestRegressionModel) oosInput.readObject();
-						oosInput.close();
+						final RandomForestModel model = RandomForestModel.load(sc.sc(), modelFile);
 						
-						//
-						log.info("Read model, predicting ...");
-						readModel.transform(inputDataFrame).select("features", "label", "prediction").javaRDD().map(new Function<Row, String>(){
-
-							@Override
-							public String call(Row row) throws Exception {
-								String tmp = null;
-								for(double s : ((DenseVector)row.get(0)).toArray()){
-									if(tmp == null){
-										tmp = String.valueOf(s);
-									}else{
-										tmp = tmp + "\t" + String.valueOf(s);
+						inputData.map(new Function<LabeledPoint, String>() {
+							    
+								@Override
+							    public String call(LabeledPoint p) {
+									double predict = model.predict(p.features());
+									String tmp = null;
+									for(double s : p.features().toArray()){
+										if(tmp == null){
+											tmp = String.valueOf(s);
+										}else{
+											tmp = tmp + "\t" + String.valueOf(s);
+										}
 									}
 									
-								}
-								return tmp + "\t" + row.get(1) + "\t" + row.get(2);
-							}
-							
-						}).saveAsTextFile(outputFile + ".tmp");
+									return tmp + "\t" + p.label() + "\t" + predict;
+							    }
+							  }).saveAsTextFile(outputFile + ".tmp");
+						
+						
 						log.info("Merging files ...");
 						File[] listOfFiles = new File(outputFile + ".tmp").listFiles();
 						
@@ -299,8 +318,18 @@ public class QRF_spark implements Serializable{
 			            IOUtils.closeQuietly(output);
 			            FileUtils.deleteDirectory(new File(outputFile + ".tmp"));
 			            
-						double rmse = calculateRMSE(readModel, inputDataFrame);
-						log.info("For the test dataset,  RMSE is: " + rmse);
+			         // Evaluate model on test instances and compute test error
+						RDD<Tuple2<Object, Object>> predictionAndLabel =
+								inputData.map(new Function<LabeledPoint, Tuple2<Object, Object>>() {
+						    @Override
+						    public Tuple2<Object, Object> call(LabeledPoint p) {
+						      return new Tuple2<Object, Object>(model.predict(p.features()), p.label());
+						    }
+						  }).rdd();
+						
+						RegressionMetrics rm = new RegressionMetrics(predictionAndLabel);
+						log.info("For the test dataset, MSE is: " + rm.meanSquaredError() + "\tVariance explained: " + rm.explainedVariance() + "\tR2: " + rm.r2());
+						
 					}
 					
 					
@@ -315,7 +344,10 @@ public class QRF_spark implements Serializable{
 			//throw new IllegalArgumentException("Need to provide featureCols index: " + featureCols.size());
 			
 		}
-			
+		folds = new double[kFold];
+		for(int i = 0; i<kFold; i++){
+			folds[i] = 1.0/kFold;
+		}
 		
 		if(labelCol < 1)
 			throw new IllegalArgumentException("labelCol index need to be positive: " + labelCol);
