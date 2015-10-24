@@ -62,14 +62,7 @@ import org.apache.spark.api.java.JavaSparkContext;
 import org.apache.spark.api.java.function.Function;
 import org.apache.spark.api.java.function.Function2;
 import org.apache.spark.ml.Model;
-import org.apache.spark.ml.classification.RandomForestClassificationModel;
-import org.apache.spark.ml.classification.RandomForestClassifier;
-import org.apache.spark.ml.evaluation.BinaryClassificationEvaluator;
-import org.apache.spark.ml.evaluation.Evaluator;
-import org.apache.spark.ml.evaluation.RegressionEvaluator;
-import org.apache.spark.ml.param.ParamMap;
-import org.apache.spark.ml.regression.RandomForestRegressionModel;
-import org.apache.spark.ml.regression.RandomForestRegressor;
+
 import org.apache.spark.ml.tuning.CrossValidator;
 import org.apache.spark.ml.tuning.CrossValidatorModel;
 import org.apache.spark.ml.tuning.ParamGridBuilder;
@@ -79,14 +72,7 @@ import org.apache.spark.mllib.regression.LabeledPoint;
 import org.apache.spark.mllib.tree.RandomForest;
 import org.apache.spark.mllib.tree.model.RandomForestModel;
 import org.apache.spark.rdd.RDD;
-import org.apache.spark.sql.DataFrame;
-import org.apache.spark.sql.Row;
-import org.apache.spark.sql.RowFactory;
-import org.apache.spark.sql.SQLContext;
-import org.apache.spark.sql.types.DataTypes;
-import org.apache.spark.sql.types.NumericType;
-import org.apache.spark.sql.types.StructField;
-import org.apache.spark.sql.types.StructType;
+
 import org.kohsuke.args4j.Argument;
 import org.kohsuke.args4j.CmdLineException;
 import org.kohsuke.args4j.CmdLineParser;
@@ -206,99 +192,7 @@ public class QRF_classifier_spark implements Serializable{
 					String modelFile = arguments.get(0);
 					String inputFile = arguments.get(1);
 					initiate();
-					
-					Logger.getLogger("org").setLevel(Level.WARN);
-				    Logger.getLogger("akka").setLevel(Level.WARN);
-					
-					SparkConf sparkConf = new SparkConf().setAppName("QRF_spark");
-					JavaSparkContext sc = new JavaSparkContext(sparkConf);
 
-					
-
-					JavaRDD<Row> inputData = sc.textFile(inputFile).map(new Function<String, Row>(){
-						
-						@Override
-						public Row call(String line) throws Exception {
-							String[] tmp = line.split(sep);
-							RowFactory rfact = new RowFactory();
-							return rfact.create(tmp);
-						}
-						
-					});
-					
-					
-					// Prepare training documents, which are labeled.
-					// Generate the schema based on the string of schema
-					List<StructField> fields = new ArrayList<StructField>();
-					fields.add(DataTypes.createStructField(inputHeaders[0], DataTypes.DoubleType, true));
-					fields.add(DataTypes.createStructField(inputHeaders[1], DataTypes.DoubleType, true));
-					fields.add(DataTypes.createStructField(inputHeaders[2], DataTypes.DoubleType, true));
-					fields.add(DataTypes.createStructField(inputHeaders[3], DataTypes.StringType, false));
-					
-					StructType schema = DataTypes.createStructType(fields);
-					
-					SQLContext sqlContext = new SQLContext(sc);
-
-					DataFrame inputDataFrame = sqlContext.createDataFrame(inputData, schema);
-							
-					if(train){
-						RandomForestClassifier rf = new RandomForestClassifier()
-								.setFeaturesCol(inputHeaders[0])
-								.setFeaturesCol(inputHeaders[1])
-								.setFeaturesCol(inputHeaders[2])
-								.setLabelCol(inputHeaders[3])
-								.setPredictionCol("prediction")
-								.setImpurity(impurity)
-								.setFeatureSubsetStrategy(featureSubsetStrategy)
-								.setNumTrees(numTrees)
-								.setMaxBins(maxBins)
-								.setMaxDepth(maxDepth)
-								.setSeed(seed);
-
-						ParamMap[] paramGrid = new ParamGridBuilder()
-						  .build();
-						
-						BinaryClassificationEvaluator bce = new BinaryClassificationEvaluator()
-															.setLabelCol(inputHeaders[3])
-															.setRawPredictionCol("prediction");
-
-
-						
-						
-						//CV
-						//TODO: change back to mllib here, CV with binaryClassfiier does not work for tree based methods....
-						CrossValidator cv = new CrossValidator()
-						  .setEstimator(rf)
-						  .setEvaluator(new RegressionEvaluator())
-						  .setEstimatorParamMaps(paramGrid)
-						  .setNumFolds(kFold); 
-						
-						// Run cross-validation, and choose the best set of parameters.
-						CrossValidatorModel cvModel = cv.fit(inputDataFrame);
-						
-						double[] performance = calculateAUC(cvModel.bestModel(), inputDataFrame);
-						log.info("After cross validation,  areaUnderROC is: " + performance[0] + "\t areaUnderPR is: " + performance[1]);
-						ObjectOutputStream oos = new ObjectOutputStream(new FileOutputStream(modelFile));
-						oos.writeObject(cvModel.bestModel());
-						oos.close();
-						
-					}else{
-						if(outputFile == null)
-							throw new IllegalArgumentException("Need to provide output file name in -outputFile for Non training mode !!");
-						//load trained model
-						log.info("Loading model ...");
-						ObjectInputStream oosInput = new ObjectInputStream(new FileInputStream(modelFile));
-						RandomForestClassificationModel readModel = (RandomForestClassificationModel) oosInput.readObject();
-						oosInput.close();
-						
-						//
-						log.info("Read model, predicting ...");
-						readModel.transform(inputDataFrame).select("features", "label", "prediction").save(outputFile);
-						
-						double[] performance = calculateAUC(readModel, inputDataFrame);
-						log.info("For the test dataset,  areaUnderROC is: " + performance[0] + "\t areaUnderPR is: " + performance[1]);
-
-					}
 					
 					
 					finish();
@@ -320,7 +214,7 @@ public class QRF_classifier_spark implements Serializable{
 		
 	}
 
-	private void finish() throws IOException{
+	private void finish(){
 		long endTime   = System.currentTimeMillis();
 		double totalTime = endTime - startTime;
 		totalTime /= 1000;
@@ -331,23 +225,7 @@ public class QRF_classifier_spark implements Serializable{
 		log.info("QRF_spark's running time is: " + String.format("%.2f",totalTime) + " secs, " + String.format("%.2f",totalTimeMins) +  " mins, " + String.format("%.2f",totalTimeHours) +  " hours");
 	}
 	
-	private double[] calculateAUC(Model<?> model, DataFrame test){
-		//calculate MSE
-		JavaRDD<Tuple2<Object, Object>> predictionAndLabel = model.transform(test).select(inputHeaders[3], "prediction").javaRDD().map(new Function<Row, Tuple2<Object, Object>>() {
 
-			@Override
-			public Tuple2<Object, Object> call(Row row) throws Exception {
-				
-				return new Tuple2<Object, Object>(row.get(0), row.get(1));
-			}
-			
-		});
-		BinaryClassificationMetrics bcm = new BinaryClassificationMetrics(predictionAndLabel.rdd());
-		double[] performances = new double[2];
-		performances[0] = bcm.areaUnderROC();
-		performances[1] = bcm.areaUnderPR();
-		return performances;
-	}
 
 
 }

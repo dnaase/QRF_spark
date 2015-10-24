@@ -80,7 +80,10 @@ import org.apache.spark.mllib.evaluation.RegressionMetrics;
 import org.apache.spark.mllib.linalg.DenseVector;
 import org.apache.spark.mllib.linalg.Vectors;
 import org.apache.spark.mllib.regression.LabeledPoint;
+import org.apache.spark.mllib.tree.GradientBoostedTrees;
 import org.apache.spark.mllib.tree.RandomForest;
+import org.apache.spark.mllib.tree.configuration.BoostingStrategy;
+import org.apache.spark.mllib.tree.model.GradientBoostedTreesModel;
 import org.apache.spark.mllib.tree.model.RandomForestModel;
 import org.apache.spark.rdd.RDD;
 import org.apache.spark.sql.DataFrame;
@@ -95,7 +98,7 @@ import scala.Tuple2;
 
 
 
-public class QRF_spark implements Serializable{
+public class QGBM_spark implements Serializable{
 
 
 	/**
@@ -123,13 +126,19 @@ public class QRF_spark implements Serializable{
 	@Option(name="-numTrees",usage="number of tree for random forest model, default: 1000")
 	public Integer numTrees = 1000;
 	
-	@Option(name="-maxDepth",usage="maximum number of tree depth for random forest model, default: 4")
+	@Option(name="-maxDepth",usage="maximum number of tree depth for GBM model, default: 4")
 	public Integer maxDepth = 5;
 	
-	@Option(name="-maxBins",usage="maximum number of bins used for splitting features at random forest model, default: 100")
+	@Option(name="-maxBins",usage="maximum number of bins used for splitting features at GBM model, default: 100")
 	public Integer maxBins = 100;
 
-	@Option(name="-maxMemoryInMB",usage="maximum memory (Mb) to be used for collecting sufficient statistics at random forest model training. larger usually quicker training, default: 10000")
+//	@Option(name="-maxIts",usage="maximum number of iterations at GBM model, default: 100")
+//	public Integer maxIts = 100;
+
+	@Option(name="-learningRate",usage="learning rate, default: 0.1")
+	public double learningRate = 0.1;
+
+	@Option(name="-maxMemoryInMB",usage="maximum memory (Mb) to be used for collecting sufficient statistics at GBM model training. larger usually quicker training, default: 10000")
 	public Integer maxMemoryInMB = 10000;
 
 	@Option(name="-featureCols",usage="which column is the class to be identified, allow multiple columns, default: null")
@@ -147,19 +156,19 @@ public class QRF_spark implements Serializable{
 	@Option(name="-h",usage="show option information")
 	public boolean help = false;
 	
-	final private static String USAGE = "QRF_spark [opts] model.qrf inputFile.txt ";
+	final private static String USAGE = "QGBM_spark [opts] model.qrf inputFile.txt ";
 
 	@Argument
 	private List<String> arguments = new ArrayList<String>();
 
 	
-	private static Logger log = Logger.getLogger(QRF_spark.class);
+	private static Logger log = Logger.getLogger(QGBM_spark.class);
 
 	private static long startTime = -1;
 	
 	private final String featureSubsetStrategy = "auto";
 	private final String impurity = "variance";
-
+	
 	//private final String[] inputHeader = new String[]{"log10p", "dist", "hic", "recomb", "recomb_matched","chromStates","label"};
 	private final String[] inputHeader = new String[]{"log10p", "hic", "recomb","label"};
 	private double[] folds;
@@ -170,7 +179,7 @@ public class QRF_spark implements Serializable{
 	 * @throws Exception 
 	 */
 	public static void main(String[] args) throws Exception {
-		QRF_spark qrf = new QRF_spark();
+		QGBM_spark qrf = new QGBM_spark();
 		BasicConfigurator.configure();
 		Logger.getLogger("org").setLevel(Level.OFF);
 	    Logger.getLogger("akka").setLevel(Level.OFF);
@@ -206,7 +215,7 @@ public class QRF_spark implements Serializable{
 					
 					
 					
-					SparkConf sparkConf = new SparkConf().setAppName("QRF_spark");
+					SparkConf sparkConf = new SparkConf().setAppName("QGBM_spark");
 					JavaSparkContext sc = new JavaSparkContext(sparkConf);
 
 					
@@ -231,8 +240,21 @@ public class QRF_spark implements Serializable{
 					
 					if(train){
 						JavaRDD<LabeledPoint>[] splits = inputData.randomSplit(folds, seed);
+						
+						BoostingStrategy boostingStrategy = BoostingStrategy.defaultParams("Regression");
+						
 						Map<Integer, Integer> categoricalFeaturesInfo = new HashMap<Integer, Integer>();
-						RandomForestModel bestModel = null;
+						boostingStrategy.setNumIterations(numTrees); 
+						boostingStrategy.setLearningRate(learningRate);
+						boostingStrategy.treeStrategy().setMaxDepth(maxDepth);
+						boostingStrategy.treeStrategy().setMaxBins(maxBins);
+						boostingStrategy.treeStrategy().setMaxMemoryInMB(maxMemoryInMB);
+						
+						//  Empty categoricalFeaturesInfo indicates all features are continuous.
+						boostingStrategy.treeStrategy().setCategoricalFeaturesInfo(categoricalFeaturesInfo);
+						
+						
+						GradientBoostedTreesModel bestModel = null;
 						double bestR2 = Double.NEGATIVE_INFINITY;
 						double bestMse = Double.MAX_VALUE;
 						double mseSum = 0.0;
@@ -250,8 +272,8 @@ public class QRF_spark implements Serializable{
 									}
 									
 							}
-							final RandomForestModel model = RandomForest.trainRegressor(trainingData,
-									  categoricalFeaturesInfo, numTrees, featureSubsetStrategy, impurity, maxDepth, maxBins, seed);
+							GradientBoostedTrees gbt = new GradientBoostedTrees(boostingStrategy);
+							final GradientBoostedTreesModel model = gbt.runWithValidation(trainingData, testData);
 							
 							// Evaluate model on test instances and compute test error
 							RDD<Tuple2<Object, Object>> predictionAndLabel =
@@ -282,7 +304,7 @@ public class QRF_spark implements Serializable{
 							throw new IllegalArgumentException("Need to provide output file name in -outputFile for Non training mode !!");
 						//load trained model
 						log.info("Loading model ...");
-						final RandomForestModel model = RandomForestModel.load(sc.sc(), modelFile);
+						final GradientBoostedTreesModel model = GradientBoostedTreesModel.load(sc.sc(), modelFile);
 						
 						inputData.map(new Function<LabeledPoint, String>() {
 							    
@@ -363,7 +385,7 @@ public class QRF_spark implements Serializable{
 		double totalTimeHours = totalTime/3600;
 		
 		
-		log.info("QRF_spark's running time is: " + String.format("%.2f",totalTime) + " secs, " + String.format("%.2f",totalTimeMins) +  " mins, " + String.format("%.2f",totalTimeHours) +  " hours");
+		log.info("QGBM_spark's running time is: " + String.format("%.2f",totalTime) + " secs, " + String.format("%.2f",totalTimeMins) +  " mins, " + String.format("%.2f",totalTimeHours) +  " hours");
 	}
 	
 	private double calculateRMSE(Model<?> model, DataFrame test){
