@@ -8,6 +8,9 @@ package main.java.edu.mit.compbio.qrf;
 
 
 
+import hex.FrameSplitter;
+import hex.SplitFrame;
+import hex.splitframe.ShuffleSplitFrame;
 import hex.tree.gbm.GBM;
 import hex.tree.gbm.GBMModel;
 
@@ -80,6 +83,7 @@ import water.Key;
 import water.api.ModelImportV3;
 import water.fvec.Frame;
 import water.fvec.H2OFrame;
+import water.fvec.NFSFileVec;
 import water.serial.ObjectTreeBinarySerializer;
 import water.util.FileUtils;
 
@@ -221,96 +225,37 @@ public class QtlWater implements Serializable{
 					String inputFile = arguments.get(1);
 					initiate();
 					
-					
-					
-					SparkConf sparkConf = new SparkConf().setAppName("QtlWater");
-					JavaSparkContext sc = new JavaSparkContext(sparkConf);
-					
-					//H2OFrame inputData = new H2OFrame(new File(inputFile));
-					
-					//inputData
-					List<StructField> fields = new ArrayList<StructField>();
-					for(Integer featureCol : featureCols){
-						
-						if(strFeatureCols != null && !strFeatureCols.isEmpty()){
-							if(strFeatureCols.contains(featureCol)){
-								fields.add(DataTypes.createStructField("C" + featureCol, DataTypes.StringType, true));
-								continue;
-							}
-						}
-						fields.add(DataTypes.createStructField("C" + featureCol, DataTypes.DoubleType, true));
-						
-					}
+					File f = new File(inputFile);
+				    NFSFileVec nfs = NFSFileVec.make(f);
+				    Frame inputFrame = water.parser.ParseDataset.parse(Key.make("QtlWater_input"),nfs._key);
+				    
 					if(train){
-						if(classifier){
-							fields.add(DataTypes.createStructField("label", DataTypes.StringType, true));
-						}else{
-							fields.add(DataTypes.createStructField("label", DataTypes.DoubleType, true));
-						}
-					}
-					
-					
-					StructType schema = DataTypes.createStructType(fields);
-					
-						JavaRDD<Row> inputData = sc.textFile(inputFile).map(new Function<String, Row>(){
+						System.out.println("split frame ...");
+						SplitFrame sfInput = new SplitFrame();
 						
-						@Override
-						public Row call(String line) throws Exception {
-							String[] tmps = line.split(sep);
-							Object[] tmpDouble;
-							if(train){
-								tmpDouble = new Object[featureCols.size() + 1];
-								for(Integer featureCol : featureCols){
-									if(strFeatureCols != null && !strFeatureCols.isEmpty() && strFeatureCols.contains(featureCol)){
-										tmpDouble[featureCol-1] = tmps[featureCol-1];
-									}else{
-										tmpDouble[featureCol-1] = Double.parseDouble(tmps[featureCol-1]);
-									}
-									
-								}
-								if(classifier){
-									tmpDouble[featureCols.size()] = tmps[labelCol-1];
-								}else{
-									tmpDouble[featureCols.size()] = Double.parseDouble(tmps[labelCol-1]);
-								}
-								
-							}else{
-								tmpDouble = new Object[featureCols.size()];
-								for(Integer featureCol : featureCols){
-									if(strFeatureCols != null && !strFeatureCols.isEmpty() && strFeatureCols.contains(featureCol)){
-										tmpDouble[featureCol-1] = tmps[featureCol-1];
-									}else{
-										tmpDouble[featureCol-1] = Double.parseDouble(tmps[featureCol-1]);
-									}
-									
-								}
-							}
-							//Double[] tmpDouble = new Double[tmps.length];
-							//for(int i = 0; i<tmps.length; i++ ){
-							//	tmpDouble[i] = Double.parseDouble(tmps[i]);
-							//}
-							//RowFactory rfact = new RowFactory();
-							return RowFactory.create(tmpDouble);
-						}
+						Key<Frame> sfOutput1 = Key.make("QtlWater_validation");
+						Key<Frame> sfOutput2 = Key.make("QtlWater_validation");
 						
-					});
-					
-					SQLContext sqlContext = new SQLContext(sc);
-
-					
-					// Prepare training documents, which are labeled.
-					H2OContext h2oContext = new H2OContext(sc.sc()).start();
-					
-					if(train){
-						JavaRDD<Row>[] splits = inputData.randomSplit(new double[]{0.9,0.1}, seed);
+						ArrayList<Key<Frame>> sd = new ArrayList<Key<Frame>>();
+						sd.add(sfOutput1);
+						sd.add(sfOutput2);
 						
-					//	
+						Key[] kf = new Key[2];
+						kf[0] = Key.make("QtlWater_validation");
+						kf[1] = Key.make("QtlWater_validation");
+						Key<Job> kj = Key.make("QtlWater_split");
 						
-						H2OFrame h2oTraining = h2oContext.toH2OFrame(sc.sc(), sqlContext.createDataFrame(splits[0].rdd(), schema, true));
-						H2OFrame h2oValidate = h2oContext.toH2OFrame(sc.sc(), sqlContext.createDataFrame(splits[1].rdd(), schema, true));
+						FrameSplitter sf = new FrameSplitter(inputFrame, new double[]{0.9,0.1},kf, kj);
+						
+						Frame h2oTraining = sf.getResult()[0];
+						
+						Frame h2oValidate = sf.getResult()[1];
+						//Frame h2oTraining = new Frame().add((Frame) kf[0].get());
+						
+						//Frame h2oValidate = new Frame().add((Frame)kf[1].get());
 						//H2OFrame h2oValidate = h2oContext.asH2OFrame(sqlContext.createDataFrame(splits[1], schema));
 						
-						
+						System.out.println("compute models ...");
 						GBMModel.GBMParameters ggParas = new GBMModel.GBMParameters();
 						ggParas._model_id = Key.make("QtlWater_training");
 						ggParas._train = h2oTraining._key;
@@ -366,63 +311,17 @@ public class QtlWater implements Serializable{
 						//fieldsInput.add(DataTypes.createStructField(inputHeader[2], DataTypes.DoubleType, true));
 						
 						//StructType schemaInput = DataTypes.createStructType(fieldsInput);
-						H2OFrame h2oToPredict = h2oContext.toH2OFrame(sc.sc(), sqlContext.createDataFrame(inputData.rdd(), schema, true));
+						Frame h2oToPredict = new Frame().add(inputFrame);
 
 						//H2OFrame h2oPredict = h2oContext.asH2OFrame(gbm.score(h2oToPredict, "predict"));
-						H2OFrame h2oPredict = h2oContext.asH2OFrame(h2oToPredict.add(gbm.score(h2oToPredict, "predict")));
+						Frame h2oPredict = h2oToPredict.add(gbm.score(h2oToPredict, "predict"));
 						
 						if(new File(outputFile + ".tmp").exists())
 							org.apache.commons.io.FileUtils.deleteDirectory(new File(outputFile + ".tmp"));
 
-						h2oContext.asDataFrame(h2oPredict, sqlContext).toJavaRDD().map(new Function<Row, String>(){
-
-							@Override
-							public String call(Row r) throws Exception {
-								String tmp = r.get(0).toString();
-								if(tmp.equalsIgnoreCase("null")){
-									tmp = "NA";
-								}
-								for(int i = 1; i< r.size(); i++){
-									String t = r.get(i).toString();
-									if(t.equalsIgnoreCase("null")){
-										t = "NA";
-									}
-									tmp = tmp + "\t" + t;
-								}
-								
-								return tmp;
-							}
-							
-						}).saveAsTextFile(outputFile + ".tmp");
-					
-						
-						System.out.println("Merging files ...");
-					File[] listOfFiles = new File(outputFile + ".tmp").listFiles();
-					
-					if(new File(outputFile).exists())
-						org.apache.commons.io.FileUtils.deleteQuietly(new File(outputFile));
-					
-					OutputStream output = new BufferedOutputStream(new FileOutputStream(outputFile, true));
-		            for (File f : listOfFiles) {
-		            	if(f.isFile() && f.getName().startsWith("part-")){
-		            		InputStream input = new BufferedInputStream(new FileInputStream(f));
-			            	IOUtils.copy(input, output);
-			            	IOUtils.closeQuietly(input);
-		            	}
-		            	
-		            }
-		            IOUtils.closeQuietly(output);
-		            org.apache.commons.io.FileUtils.deleteDirectory(new File(outputFile + ".tmp"));
-						//System.err.println(h2oPredict.toString());
-						//for(String s : h2oPredict.names())
-						//	System.err.println(s);
-						//System.err.println(h2oPredict.numCols() + "\t" + h2oPredict.numRows());
-						
-						//ObjectOutputStream oos = new ObjectOutputStream(new FileOutputStream(outputFile, true));
-						
-						//h2oPredict.writeExternal(oos);;
-						//oos.close();
-					}
+						File o = new File(inputFile);
+					    NFSFileVec nfsOut = NFSFileVec.make(o);
+					}    
 					
 					finish(inputFile);
 	}
