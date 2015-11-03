@@ -233,16 +233,16 @@ public class QtlWater implements Serializable{
 						System.out.println("split frame ...");
 						SplitFrame sfInput = new SplitFrame();
 						
-						Key<Frame> sfOutput1 = Key.make("QtlWater_validation");
-						Key<Frame> sfOutput2 = Key.make("QtlWater_validation");
+						Key<Frame> sfOutput1 = Key.make("QtlWater_training_input");
+						Key<Frame> sfOutput2 = Key.make("QtlWater_validation_input");
 						
 						ArrayList<Key<Frame>> sd = new ArrayList<Key<Frame>>();
 						sd.add(sfOutput1);
 						sd.add(sfOutput2);
 						
 						Key[] kf = new Key[2];
-						kf[0] = Key.make("QtlWater_validation");
-						kf[1] = Key.make("QtlWater_validation");
+						kf[0] = Key.make("QtlWater_training_input");
+						kf[1] = Key.make("QtlWater_validation_input");
 						Key<Job> kj = Key.make("QtlWater_split");
 						
 						FrameSplitter sf = new FrameSplitter(inputFrame, new double[]{0.9,0.1},kf, kj);

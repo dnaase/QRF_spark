@@ -18,17 +18,24 @@
 </build>
 	
 	<groupId>edu.mit.compbio</groupId>
-  <artifactId>QRF_spark</artifactId>
+  <artifactId>QtlWater</artifactId>
   <modelVersion>4.0.0</modelVersion>
-  <name>QRF_spark</name>
+  <name>QtlWater</name>
   <packaging>jar</packaging>
-  <version>0.4</version>
+  <version>0.5</version>
   <dependencies>
   	<dependency>
       <groupId>args4j</groupId>
       <artifactId>args4j</artifactId>
       <version>2.0.31</version>
     </dependency>
+	<dependency>
+		<groupId>fastutil</groupId>
+		<artifactId>fastutil</artifactId>
+		<version>7.0.8</version>
+		<scope>system</scope>
+		<systemPath>/Users/yaping/Documents/workspace/code/QRF_spark/lib/fastutil-7.0.8.jar</systemPath>
+	</dependency>
     <dependency> <!-- Spark dependency -->
       <groupId>org.apache.spark</groupId>
       <artifactId>spark-core_2.10</artifactId>

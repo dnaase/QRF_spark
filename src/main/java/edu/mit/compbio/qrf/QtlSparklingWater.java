@@ -155,6 +155,9 @@ public class QtlSparklingWater implements Serializable{
 	@Option(name="-featureCols",usage="which columns are the features used to predict, allow multiple columns, default: null")
 	public ArrayList<Integer> featureColsI = null;
 
+	@Option(name="-indexCols",usage="which columns are the index column, not used for training or prediction, but just for index, allow multiple columns, default: null")
+	public ArrayList<Integer> indexCols = null;
+
 	@Option(name="-strFeatureCols",usage="which columns used to predict are belong to category rather than continuous, allow multiple columns, default: null")
 	public ArrayList<Integer> strFeatureColsI = null;
 
@@ -175,8 +178,9 @@ public class QtlSparklingWater implements Serializable{
 	@Argument
 	private List<String> arguments = new ArrayList<String>();
 
-	private TreeSet<Integer> featureCols;
-	private TreeSet<Integer> strFeatureCols;
+	private ArrayList<Integer> featureCols;
+	private ArrayList<Integer> strFeatureCols;
+
 	
 	private static Logger log = Logger.getLogger(QtlSparklingWater.class);
 
@@ -238,6 +242,13 @@ public class QtlSparklingWater implements Serializable{
 					
 					//inputData
 					List<StructField> fields = new ArrayList<StructField>();
+					if(indexCols != null && !indexCols.isEmpty()){
+						for(Integer indexCol : indexCols){
+							fields.add(DataTypes.createStructField("I" + indexCol, DataTypes.StringType, true));
+							
+						}
+					}
+					
 					for(Integer featureCol : featureCols){
 						
 						if(strFeatureCols != null && !strFeatureCols.isEmpty()){
@@ -249,6 +260,8 @@ public class QtlSparklingWater implements Serializable{
 						fields.add(DataTypes.createStructField("C" + featureCol, DataTypes.DoubleType, true));
 						
 					}
+					
+					
 					if(train){
 						if(classifier){
 							fields.add(DataTypes.createStructField("label", DataTypes.StringType, true));
@@ -256,6 +269,7 @@ public class QtlSparklingWater implements Serializable{
 							fields.add(DataTypes.createStructField("label", DataTypes.DoubleType, true));
 						}
 					}
+					
 					
 					
 					StructType schema = DataTypes.createStructType(fields);
@@ -266,38 +280,55 @@ public class QtlSparklingWater implements Serializable{
 						public Row call(String line) throws Exception {
 							String[] tmps = line.split(sep);
 							Object[] tmpDouble;
-							if(train){
-								tmpDouble = new Object[featureCols.size() + 1];
-								for(Integer featureCol : featureCols){
-									if(strFeatureCols != null && !strFeatureCols.isEmpty() && strFeatureCols.contains(featureCol)){
-										tmpDouble[featureCol-1] = tmps[featureCol-1];
-									}else{
-										tmpDouble[featureCol-1] = Double.parseDouble(tmps[featureCol-1]);
-									}
-									
-								}
-								if(classifier){
-									tmpDouble[featureCols.size()] = tmps[labelCol-1];
+							int currentDeposit = 0;
+							if(indexCols != null && !indexCols.isEmpty()){
+								if(train){
+									tmpDouble = new Object[featureCols.size() + indexCols.size() + 1];
 								}else{
-									tmpDouble[featureCols.size()] = Double.parseDouble(tmps[labelCol-1]);
+									tmpDouble = new Object[featureCols.size() + indexCols.size()];
+								}
+								for(int i = 0; i<indexCols.size(); i++){
+									tmpDouble[i] = tmps[indexCols.get(i)-1];
+									currentDeposit++;
 								}
 								
 							}else{
-								tmpDouble = new Object[featureCols.size()];
-								for(Integer featureCol : featureCols){
-									if(strFeatureCols != null && !strFeatureCols.isEmpty() && strFeatureCols.contains(featureCol)){
-										tmpDouble[featureCol-1] = tmps[featureCol-1];
+								if(train){
+									tmpDouble = new Object[featureCols.size() + 1];
+								}else{
+									tmpDouble = new Object[featureCols.size()];
+								}
+							}
+							
+							if(train){
+								
+								for(int i = currentDeposit, j=0; i<featureCols.size()+currentDeposit; i++, j++){
+									if(strFeatureCols != null && !strFeatureCols.isEmpty() && strFeatureCols.contains(featureCols.get(j))){
+										tmpDouble[i] = tmps[featureCols.get(j)-1];
 									}else{
-										tmpDouble[featureCol-1] = Double.parseDouble(tmps[featureCol-1]);
+										tmpDouble[i] = Double.parseDouble(tmps[featureCols.get(j)-1]);
 									}
 									
 								}
+								
+								if(classifier){
+									tmpDouble[featureCols.size()+currentDeposit] = tmps[labelCol-1];
+								}else{
+									tmpDouble[featureCols.size()+currentDeposit] = Double.parseDouble(tmps[labelCol-1]);
+								}
+							}else{
+								for(int i = currentDeposit, j=0; i<featureCols.size()+currentDeposit; i++, j++){
+									if(strFeatureCols != null && !strFeatureCols.isEmpty() && strFeatureCols.contains(featureCols.get(j))){
+										tmpDouble[i] = tmps[featureCols.get(j)-1];
+									}else{
+										tmpDouble[i] = Double.parseDouble(tmps[featureCols.get(j)-1]);
+									}
+								}
+								
 							}
-							//Double[] tmpDouble = new Double[tmps.length];
-							//for(int i = 0; i<tmps.length; i++ ){
-							//	tmpDouble[i] = Double.parseDouble(tmps[i]);
-							//}
-							//RowFactory rfact = new RowFactory();
+							
+							
+							
 							return RowFactory.create(tmpDouble);
 						}
 						
@@ -328,7 +359,14 @@ public class QtlSparklingWater implements Serializable{
 						ggParas._ntrees = numTrees;
 						ggParas._max_depth = maxDepth;
 						ggParas._nbins = maxBins;
-						
+						if(indexCols != null && !indexCols.isEmpty()){
+							String[] omitCols = new String[indexCols.size()];
+							for(int i = 0; i < indexCols.size(); i++){
+								omitCols[i] = "I" + indexCols.get(i);
+							}
+							ggParas._ignored_columns = omitCols;
+							
+						}
 						ggParas._seed = seed;
 						
 						
@@ -441,18 +479,20 @@ public class QtlSparklingWater implements Serializable{
 		
 		
 		if(featureColsI == null || featureColsI.isEmpty()){
-			featureCols = new TreeSet<Integer>();
+			featureCols = new ArrayList<Integer>();
 			featureCols.add(1);featureCols.add(2);featureCols.add(3);
 			//throw new IllegalArgumentException("Need to provide featureCols index: " + featureCols.size());
 			
 		}else{
-			featureCols = new TreeSet<Integer>(featureColsI);
+			TreeSet<Integer> featureColsTmp = new TreeSet<Integer>(featureColsI);
+			featureCols = new ArrayList<Integer>(featureColsTmp);
 		}
 		
 		if(strFeatureColsI != null && strFeatureColsI.isEmpty()){
-			strFeatureCols = new TreeSet<Integer>(strFeatureColsI);
+			TreeSet<Integer> strFeatureColsTmp = new TreeSet<Integer>(strFeatureColsI);
+			strFeatureCols = new ArrayList<Integer>(strFeatureColsTmp);
 		}else{
-			strFeatureCols = new TreeSet<Integer>();
+			strFeatureCols = new ArrayList<Integer>();
 		}
 		
 		
