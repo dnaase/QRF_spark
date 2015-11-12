@@ -148,7 +148,7 @@ public class FdrCorrectionSpark implements Serializable {
 					
 					ObjectBigArrayBigList<String> keys = new ObjectBigArrayBigList<String>(inputData.values().toLocalIterator());
 					
-					sc.close();
+					//sc.close();
 					
 					Double min = 1.0;
 					
