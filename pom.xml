@@ -34,7 +34,7 @@
 		<artifactId>fastutil</artifactId>
 		<version>7.0.8</version>
 		<scope>system</scope>
-		<systemPath>/Users/yaping/Documents/workspace/code/QRF_spark/lib/fastutil-7.0.8.jar</systemPath>
+		<systemPath>${basedir}/lib/fastutil-7.0.8.jar</systemPath>
 	</dependency>
     <dependency> <!-- Spark dependency -->
       <groupId>org.apache.spark</groupId>
