@@ -2,7 +2,10 @@
 <classpath>
 	<classpathentry kind="src" path="src"/>
 	<classpathentry kind="con" path="org.eclipse.jdt.launching.JRE_CONTAINER"/>
-	<classpathentry kind="lib" path="lib/args4j-2.0.5.jar"/>
 	<classpathentry kind="lib" path="lib/spark-assembly-1.5.1-hadoop2.4.0.jar"/>
+	<classpathentry kind="lib" path="lib/h2o.jar"/>
+	<classpathentry kind="lib" path="lib/sparkling-water-assembly-1.5.3-all.jar"/>
+	<classpathentry kind="lib" path="lib/args4j-2.0.31.jar"/>
+	<classpathentry kind="lib" path="lib/fastutil-7.0.8.jar"/>
 	<classpathentry kind="output" path="bin"/>
 </classpath>

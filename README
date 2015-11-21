@@ -3,6 +3,12 @@ spark-submit --jars lib/args4j-2.0.5.jar --class main.java.edu.mit.compbio.qrf.Q
 
 sudo mvn clean compile assembly:single
 
+###generate training datasets
+perl QtlWater_pipeline.pl test configure.txt --ground_truth_data test_data/cis-qtl.matrixEQtlAll.SampleSize-133.test.chr1.txt --ground_truth_data_indexs 1 --ground_truth_data_indexs 2 --ground_truth_data_rawp 5 --ground_truth_data_fdr 6 --mode 2
+
+###generate decoding result
+perl QtlWater_pipeline.pl test configure.txt
+
 
 
 cd /Users/yaping/Documents/workspace/project/meQTL/method_dev/multisource/testQRF_spark

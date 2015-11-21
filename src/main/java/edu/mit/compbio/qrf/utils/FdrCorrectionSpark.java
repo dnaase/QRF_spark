@@ -25,9 +25,8 @@ import org.apache.log4j.Logger;
 import org.apache.spark.SparkConf;
 import org.apache.spark.api.java.JavaPairRDD;
 import org.apache.spark.api.java.JavaSparkContext;
-
+import org.apache.spark.api.java.function.Function2;
 import org.apache.spark.api.java.function.PairFunction;
-
 import org.kohsuke.args4j.Argument;
 import org.kohsuke.args4j.CmdLineException;
 import org.kohsuke.args4j.CmdLineParser;
@@ -123,7 +122,7 @@ public class FdrCorrectionSpark implements Serializable {
 
 					
 					
-					JavaPairRDD<Double, String> inputData = sc.textFile(inputFile).mapToPair(new PairFunction<String, Double, String>(){
+					JavaPairRDD<Double, Tuple2<String,Double>> inputData = sc.textFile(inputFile).mapToPair(new PairFunction<String, Double, String>(){
 
 						@Override
 						public Tuple2<Double, String> call(String row) throws Exception {
@@ -143,15 +142,31 @@ public class FdrCorrectionSpark implements Serializable {
 						
 					}).sortByKey(true);
 					
-					long count = inputData.count();
-					DoubleBigArrayBigList rawPs = new DoubleBigArrayBigList(inputData.keys().toLocalIterator());
+					final long count = inputData.count();
+					
+					
+					inputData.reduce(new Function2<Tuple2<Double, String>, Tuple2<Double, String>, Tuple2<Double, String>>(){
+
+						@Override
+						public Tuple3<Double, String> call(
+								Tuple2<Double, String> left,
+								Tuple2<Double, String> right) throws Exception {
+							Double tmp = count*right._1/i;
+							
+							return null;
+						}
+						
+					});
+					
+					
+					/*
+					 * DoubleBigArrayBigList rawPs = new DoubleBigArrayBigList(inputData.keys().toLocalIterator());
 					
 					ObjectBigArrayBigList<String> keys = new ObjectBigArrayBigList<String>(inputData.values().toLocalIterator());
 					
 					//sc.close();
 					
 					Double min = 1.0;
-					
 					if(outputFile != null){
 						//ObjectOutputStream writer = new ObjectOutputStream(new FileOutputStream(outputFile));
 						PrintWriter writer = new PrintWriter(new File(outputFile));
@@ -167,7 +182,7 @@ public class FdrCorrectionSpark implements Serializable {
 						}
 						writer.close();
 					}
-					 
+					 */
 					
 					
 					
