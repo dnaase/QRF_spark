@@ -127,7 +127,7 @@ public class QtlSparklingWater implements Serializable{
 	@Option(name="-train",usage="only  in the train mode, it will use input file to generate model and saved in model.qrf, default: false")
 	public boolean train = false;
 
-	@Option(name="-classifier",usage="not use regression model, just use classifier mode, default: false")
+	@Option(name="-classifier",usage="not use regression model, just use classifier mode,and will use permutation to calculate p value default: false")
 	public boolean classifier = false;
 
 

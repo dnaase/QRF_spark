@@ -122,7 +122,7 @@ public class FdrCorrectionSpark implements Serializable {
 
 					
 					
-					JavaPairRDD<Double, Tuple2<String,Double>> inputData = sc.textFile(inputFile).mapToPair(new PairFunction<String, Double, String>(){
+					JavaPairRDD<Double, String> inputData = sc.textFile(inputFile).mapToPair(new PairFunction<String, Double, String>(){
 
 						@Override
 						public Tuple2<Double, String> call(String row) throws Exception {
@@ -140,10 +140,30 @@ public class FdrCorrectionSpark implements Serializable {
 
 						
 						
-					}).sortByKey(true);
+					});
 					
 					final long count = inputData.count();
 					
+					inputData.mapToPair(new PairFunction<Tuple2<Double, String>, Double, Tuple2<String, Long>>(){
+
+						@Override
+						public Tuple2<Double, Tuple2<String, Long>> call(
+								Tuple2<Double, String> row) throws Exception {
+							
+							return new Tuple2<Double, Tuple2<String, Long>>(row._1(),new Tuple2<String,Long>(row._2(), 1L));
+						}
+						
+					}).sortByKey(false).reduceByKey(new Function2<Tuple2<String, Long>, Tuple2<String, Long>, Tuple2<String, Long>>(){
+
+						@Override
+						public Tuple2<String, Long> call(
+								Tuple2<String, Long> left,
+								Tuple2<String, Long> right) throws Exception {
+							
+							return new Tuple2<String, Long>();
+						}
+						
+					})
 					
 					inputData.reduce(new Function2<Tuple2<Double, String>, Tuple2<Double, String>, Tuple2<Double, String>>(){
 
