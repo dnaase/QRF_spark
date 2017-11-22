@@ -224,6 +224,9 @@ public class QtlWater implements Serializable{
 					String modelFile = arguments.get(0);
 					String inputFile = arguments.get(1);
 					initiate();
+					SparkConf sparkConf = new SparkConf().setAppName("QtlWater");
+					JavaSparkContext sc = new JavaSparkContext(sparkConf);
+					H2OContext h2oContext = new H2OContext(sc.sc()).start();
 					
 					File f = new File(inputFile);
 				    NFSFileVec nfs = NFSFileVec.make(f);

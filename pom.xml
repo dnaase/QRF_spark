@@ -62,32 +62,32 @@
      <dependency>
       <groupId>ai.h2o</groupId>
       <artifactId>h2o-algos</artifactId>
-      <version>3.4.0.1</version>
+      <version>3.2.0.9</version>
      </dependency>
     <dependency>
       <groupId>ai.h2o</groupId>
       <artifactId>h2o-core</artifactId>
-      <version>3.4.0.1</version>
+      <version>3.2.0.9</version>
      </dependency>
      <dependency>
        <groupId>ai.h2o</groupId>
        <artifactId>h2o-scala_2.10</artifactId>
-       <version>3.4.0.1</version>
+       <version>3.2.0.9</version>
      </dependency>
      <dependency>
 		<groupId>ai.h2o</groupId>
 		<artifactId>h2o-genmodel</artifactId>
-		<version>3.4.0.1</version>
+		<version>3.2.0.9</version>
 	</dependency>
      <dependency>
 		<groupId>ai.h2o</groupId>
 		<artifactId>h2o-java-rest-bindings</artifactId>
-		<version>3.4.0.1</version>
+		<version>3.2.0.9</version>
 	</dependency>
 	<dependency>
 		<groupId>ai.h2o</groupId>
 		<artifactId>h2o-persist-hdfs</artifactId>
-		<version>3.4.0.1</version>
+		<version>3.2.0.9</version>
 	</dependency>
 	<dependency>
 		<groupId>ai.h2o</groupId>
@@ -97,12 +97,12 @@
 	<dependency>
 		<groupId>ai.h2o</groupId>
 		<artifactId>h2o-web</artifactId>
-		<version>3.4.0.1</version>
+		<version>3.2.0.9</version>
 	</dependency>
 	<dependency>
 		<groupId>ai.h2o</groupId>
 		<artifactId>h2o-app</artifactId>
-		<version>3.4.0.1</version>
+		<version>3.2.0.9</version>
 	</dependency>
      <dependency>
 		<groupId>ai.h2o</groupId>
